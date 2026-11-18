@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>校慶報到系統 - 工作人員後台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
+
+  <header class="bg-slate-900 text-white py-4 px-6 shadow">
+    <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center gap-3">
+      <div>
+        <h1 class="text-xl font-bold">校慶座位與報到管理後台</h1>
+        <p id="loggedUserText" class="text-xs text-slate-400 mt-0.5">尚未驗證管理員身分</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="index.html" class="text-xs bg-slate-700 hover:bg-slate-600 px-3.5 py-2 rounded-lg transition font-medium">
+          返回前台查詢
+        </a>
+        <button type="button" id="logoutBtn"
+          class="hidden text-xs bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-2 rounded-lg transition font-bold shadow-sm">
+          登出
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-4 mt-4">
+
+    <div id="autoLoginLoading" class="hidden max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8 mt-8 text-center">
+      <div class="inline-block w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+      <p class="text-slate-600 text-sm font-medium mt-3">正在恢復管理員登入狀態，請稍候...</p>
+    </div>
+
+    <div id="loginBox" class="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-8">
+      <h2 class="text-lg font-bold text-slate-900 mb-1">工作人員身分驗證</h2>
+      <p class="text-xs text-slate-500 mb-4">請輸入授權的學校 O365 電子郵件信箱以進入管理後台（登入後將自動保持登入狀態直到您點擊登出）。</p>
+      <input type="email" id="adminEmailInput" placeholder="name@school.edu.tw"
+        class="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <button type="button" id="loginBtn"
+        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">
+        驗證並進入後台
+      </button>
+      <p id="loginError" class="hidden text-red-600 text-xs mt-3"></p>
+    </div>
+
+    <div id="dashboard" class="hidden space-y-6">
+
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">1. 前台 QR Code 活動模式切換</h2>
+            <p class="text-xs text-slate-500 mt-1">
+              目前前台顯示模式：<span id="currentModeBadge" class="font-bold text-indigo-600">讀取中...</span>
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="btnModeCeremony"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition">
+              切換為「校慶典禮」
+            </button>
+            <button type="button" id="btnModeBanquet"
+              class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition">
+              切換為「校慶午宴」
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h2 class="text-base font-bold text-slate-900">2. Excel 名單批次匯入</h2>
+        <p class="text-xs text-slate-500 mt-1 mb-4">
+          請選擇包含「<strong>校慶典禮座位號_校友</strong>」、「<strong>校慶典禮座位號_教職員貴賓</strong>」、「<strong>校慶午宴桌次號</strong>」工作表的 Excel 檔案（.xlsx）。
+        </p>
+
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+          <input type="file" id="excelFileInput" accept=".xlsx,.xls"
+            class="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" id="clearOldCheckbox" checked class="w-4 h-4 rounded text-indigo-600" />
+            <span>匯入前清空舊名單</span>
+          </label>
+
+          <button type="button" id="uploadBtn"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition whitespace-nowrap">
+            開始匯入至 SharePoint
+          </button>
+        </div>
+        <div id="importStatus" class="hidden mt-3 text-xs p-3 rounded-xl"></div>
+      </section>
+
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">3. 即時報到狀況與名單匯出</h2>
+            <p class="text-xs text-slate-500 mt-0.5">可隨時重新整理查看現場報到進度，或匯出含報到時間的 Excel 備份。</p>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="refreshBtn"
+              class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">
+              ↻ 重新整理名單
+            </button>
+            <button type="button" id="exportBtn"
+              class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">
+              ↓ 匯出報到結果 Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+          <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+            <div class="text-xs font-semibold text-indigo-700">典禮 - 校友報到率</div>
+            <div id="statAlumni" class="text-2xl font-extrabold text-indigo-950 mt-1">0 / 0</div>
+          </div>
+          <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <div class="text-xs font-semibold text-blue-700">典禮 - 教職員貴賓報到率</div>
+            <div id="statStaff" class="text-2xl font-extrabold text-blue-950 mt-1">0 / 0</div>
+          </div>
+          <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
+            <div class="text-xs font-semibold text-amber-700">午宴 - 總報到率</div>
+            <div id="statBanquet" class="text-2xl font-extrabold text-amber-950 mt-1">0 / 0</div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex gap-1 bg-slate-100 p-1 rounded-xl">
+            <button type="button" id="atab-alumni"
+              class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm">校友名單</button>
+            <button type="button" id="atab-staff"
+              class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600">教職員貴賓</button>
+            <button type="button" id="atab-banquet"
+              class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600">午宴桌次</button>
+          </div>
+          <input type="text" id="adminFilterInput" placeholder="搜尋姓名、座位或桌次..."
+            class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs w-56 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-left text-xs">
+            <thead id="adminTableHead" class="bg-slate-50 text-slate-600 border-b border-slate-200"></thead>
+            <tbody id="adminTableBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+  (function() {
+    var CONFIG = {
+      URL_CONFIG: "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/84466ef4714f48c58c9ffaf0fd4aa52d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=XRC0r4mbBaHUWmzvZG8JKDGgzi45HcZHjAbTFN-OcTs",
+      URL_QUERY:  "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/04/workflows/da99d5417ed74d2e94e4bc62c3329648/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=1JcCijnr3-AUVefgzLWIcNuLHwN2YxVOtflOxA7p3Zc",
+      URL_ADMIN:  "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/16/workflows/0c58ca5029b8494a87966bf0d76ba5c2/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=uK1Xg1GSNPNzlkCDgmu7cHyHJFWmyfQ3cSNyjRM-_Ek",
+      URL_IMPORT: "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/20/workflows/63103775e5444711b144cda6650ef21b/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=VqNPaw30oDFtYw-doSVvG1Zcpxb7d12bKuVFMS3UlwQ"
+    };
+
+    var STORAGE_KEY = "school_event_admin_email";
+    var adminEmail = "";
+    var allData = { alumni: [], staff: [], banquet: [] };
+    var activeTab = "alumni";
+
+    function el(id) {
+      return document.getElementById(id);
+    }
+
+    function getSavedEmail() {
+      try { return localStorage.getItem(STORAGE_KEY) || ""; } catch (e) { return ""; }
+    }
+    function setSavedEmail(val) {
+      try { localStorage.setItem(STORAGE_KEY, val); } catch (e) {}
+    }
+    function clearSavedEmail() {
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    }
+
+    function escapeHtml(str) {
+      var s = (str === undefined || str === null) ? "" : String(str);
+      return s.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#39;");
+    }
+
+    function getVal(item, keys) {
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (item[k] !== undefined && item[k] !== null && String(item[k]).trim() !== "") {
+          return String(item[k]).trim();
+        }
+      }
+      return "";
+    }
+
+    function getCheckinTime(item) {
+      var candidateKeys = [
+        "報到時間",
+        "field_1", "field_2", "field_3", "field_4", "field_5",
+        "field_6", "field_7", "field_8", "field_9", "field_10"
+      ];
+      for (var i = 0; i < candidateKeys.length; i++) {
+        var val = item[candidateKeys[i]];
+        if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(val.trim())) {
+          return val.trim();
+        }
+      }
+      for (var k in item) {
+        if (!Object.prototype.hasOwnProperty.call(item, k)) continue;
+        if (k === "Created" || k === "Modified" || k.charAt(0) === "@" || k.charAt(0) === "{") continue;
+        var v = item[k];
+        if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(v.trim())) {
+          return v.trim();
+        }
+      }
+      return "";
+    }
+
+    async function doLoginRequest(email) {
+      var errEl = el("loginError");
+      try {
+        var res = await fetch(CONFIG.URL_ADMIN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, command: "getLists" })
+        });
+
+        if (res.status === 403) {
+          throw new Error("此信箱不在系統管理員白名單中（無權限）。");
+        }
+        if (!res.ok) {
+          throw new Error("驗證失敗，HTTP 狀態碼：" + res.status);
+        }
+
+        var data = await res.json();
+        adminEmail = email;
+        setSavedEmail(adminEmail);
+
+        allData = {
+          alumni: data.alumni || [],
+          staff: data.staff || [],
+          banquet: data.banquet || []
+        };
+
+        el("loggedUserText").textContent = "已登入管理員：" + adminEmail;
+        el("autoLoginLoading").classList.add("hidden");
+        el("loginBox").classList.add("hidden");
+        el("logoutBtn").classList.remove("hidden");
+        el("dashboard").classList.remove("hidden");
+
+        updateStatsAndTable();
+        await fetchCurrentMode();
+        return true;
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove("hidden");
+        return false;
+      }
+    }
+
+    async function verifyAdmin() {
+      var email = el("adminEmailInput").value.trim();
+      var errEl = el("loginError");
+      var btn = el("loginBtn");
+
+      if (!email) {
+        errEl.textContent = "請輸入 O365 電子郵件信箱";
+        errEl.classList.remove("hidden");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "驗證權限中...";
+      errEl.classList.add("hidden");
+
+      await doLoginRequest(email);
+
+      btn.disabled = false;
+      btn.textContent = "驗證並進入後台";
+    }
+
+    function logoutAdmin() {
+      if (!confirm("確定要登出管理後台嗎？登出後下次進入需重新輸入信箱驗證。")) return;
+      clearSavedEmail();
+      adminEmail = "";
+      allData = { alumni: [], staff: [], banquet: [] };
+      el("adminEmailInput").value = "";
+      el("loggedUserText").textContent = "尚未驗證管理員身分";
+      el("logoutBtn").classList.add("hidden");
+      el("dashboard").classList.add("hidden");
+      el("loginError").classList.add("hidden");
+      el("loginBox").classList.remove("hidden");
+    }
+
+    async function fetchCurrentMode() {
+      try {
+        var res = await fetch(CONFIG.URL_CONFIG, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        var data = await res.json();
+        var mode = (data.mode || "ceremony").trim().toLowerCase();
+        el("currentModeBadge").textContent =
+          mode === "banquet" ? "校慶午宴 (banquet)" : "校慶典禮 (ceremony)";
+      } catch (e) {
+        el("currentModeBadge").textContent = "讀取失敗";
+      }
+    }
+
+    async function changeMode(newMode) {
+      var label = newMode === "banquet" ? "校慶午宴" : "校慶典禮";
+      if (!confirm("確定要將前台 QR Code 頁面切換為「" + label + "」模式嗎？")) return;
+
+      try {
+        var res = await fetch(CONFIG.URL_ADMIN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: adminEmail,
+            command: "setMode",
+            newMode: newMode
+          })
+        });
+        if (!res.ok) throw new Error("切換失敗");
+        await fetchCurrentMode();
+        alert("已成功切換為「" + label + "」模式！");
+      } catch (err) {
+        alert("切換模式發生錯誤：" + err.message);
+      }
+    }
+
+    async function loadAllLists() {
+      var btn = el("refreshBtn");
+      btn.disabled = true;
+      btn.textContent = "讀取中...";
+      try {
+        var res = await fetch(CONFIG.URL_ADMIN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: adminEmail, command: "getLists" })
+        });
+        if (!res.ok) throw new Error("讀取名單失敗");
+        var data = await res.json();
+        allData = {
+          alumni: data.alumni || [],
+          staff: data.staff || [],
+          banquet: data.banquet || []
+        };
+        updateStatsAndTable();
+      } catch (err) {
+        alert("重新整理失敗：" + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "↻ 重新整理名單";
+      }
+    }
+
+    async function uploadExcel() {
+      var fileInput = el("excelFileInput");
+      var statusBox = el("importStatus");
+      var uploadBtn = el("uploadBtn");
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert("請先選擇要匯入的 Excel (.xlsx) 檔案！");
+        return;
+      }
+
+      var clearOld = el("clearOldCheckbox").checked;
+      if (clearOld && !confirm("您勾選了「匯入前清空舊名單」，這將會刪除目前 SharePoint 上的所有資料與報到紀錄並重新匯入，確定繼續嗎？")) {
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "解析與匯入中（約需 10~30 秒）...";
+      statusBox.className = "mt-3 text-xs p-3 rounded-xl bg-blue-50 text-blue-800";
+      statusBox.textContent = "正在讀取 Excel 檔案並傳送至雲端寫入 SharePoint，請勿關閉視窗...";
+      statusBox.classList.remove("hidden");
+
+      try {
+        var file = fileInput.files[0];
+        var buffer = await file.arrayBuffer();
+        var workbook = XLSX.read(buffer, { type: "array" });
+
+        var alumniSheet = workbook.Sheets["校慶典禮座位號_校友"];
+        var staffSheet = workbook.Sheets["校慶典禮座位號_教職員貴賓"];
+        var banquetSheet = workbook.Sheets["校慶午宴桌次號"];
+
+        var alumniArr = alumniSheet ? XLSX.utils.sheet_to_json(alumniSheet, { defval: "" }) : [];
+        var staffArr = staffSheet ? XLSX.utils.sheet_to_json(staffSheet, { defval: "" }) : [];
+        var banquetArr = banquetSheet ? XLSX.utils.sheet_to_json(banquetSheet, { defval: "" }) : [];
+
+        if (alumniArr.length === 0 && staffArr.length === 0 && banquetArr.length === 0) {
+          throw new Error("在 Excel 中找不到對應的工作表名稱或內容皆為空白。");
+        }
+
+        var res = await fetch(CONFIG.URL_IMPORT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: adminEmail,
+            clearOld: clearOld,
+            alumni: alumniArr,
+            staff: staffArr,
+            banquet: banquetArr
+          })
+        });
+
+        if (!res.ok) throw new Error("匯入 API 回傳錯誤，狀態碼：" + res.status);
+
+        statusBox.className = "mt-3 text-xs p-3 rounded-xl bg-emerald-50 text-emerald-800 font-bold";
+        statusBox.textContent = "✓ 匯入成功！共處理：校友 " + alumniArr.length + " 筆、教職員貴賓 " + staffArr.length + " 筆、午宴 " + banquetArr.length + " 筆。";
+        await loadAllLists();
+      } catch (err) {
+        statusBox.className = "mt-3 text-xs p-3 rounded-xl bg-red-50 text-red-700";
+        statusBox.textContent = "匯入失敗：" + err.message;
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "開始匯入至 SharePoint";
+      }
+    }
+
+    function exportExcel() {
+      var wb = XLSX.utils.book_new();
+
+      var alumniRows = allData.alumni.map(function(r) {
+        return {
+          "姓名": r.Title || "",
+          "椅背號": getVal(r, ["椅背號", "field_1"]),
+          "職稱": getVal(r, ["職稱", "field_2"]),
+          "報到時間": getCheckinTime(r)
+        };
+      });
+      var staffRows = allData.staff.map(function(r) {
+        return {
+          "姓名": r.Title || "",
+          "椅背號": getVal(r, ["椅背號", "field_1"]),
+          "單位職稱": getVal(r, ["單位職稱", "field_2"]),
+          "報到時間": getCheckinTime(r)
+        };
+      });
+      var banquetRows = allData.banquet.map(function(r) {
+        return {
+          "姓名": r.Title || "",
+          "廳別": getVal(r, ["廳別", "field_1"]),
+          "桌次": getVal(r, ["桌次", "field_2"]),
+          "序號": getVal(r, ["序號", "field_3"]),
+          "桌次屬性": getVal(r, ["桌次屬性", "field_4"]),
+          "單位": getVal(r, ["單位", "field_5"]),
+          "素食": getVal(r, ["素食", "field_6"]),
+          "報到時間": getCheckinTime(r)
+        };
+      });
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(alumniRows), "校慶典禮座位號_校友");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(staffRows), "校慶典禮座位號_教職員貴賓");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(banquetRows), "校慶午宴桌次號");
+
+      var dateStr = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, "校慶報到統計結果_" + dateStr + ".xlsx");
+    }
+
+    function updateStatsAndTable() {
+      var calc = function(arr) {
+        return arr.filter(function(x) { return getCheckinTime(x); }).length + " / " + arr.length;
+      };
+      el("statAlumni").textContent = calc(allData.alumni);
+      el("statStaff").textContent = calc(allData.staff);
+      el("statBanquet").textContent = calc(allData.banquet);
+      renderAdminTable();
+    }
+
+    function switchAdminTab(tab) {
+      activeTab = tab;
+      var tabs = ["alumni", "staff", "banquet"];
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        el("atab-" + t).className = (t === tab)
+          ? "px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm"
+          : "px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600";
+      }
+      renderAdminTable();
+    }
+
+    function renderAdminTable() {
+      var thead = el("adminTableHead");
+      var tbody = el("adminTableBody");
+      var kw = el("adminFilterInput").value.trim().toLowerCase();
+      var list = allData[activeTab] || [];
+
+      if (activeTab === "alumni") {
+        thead.innerHTML = '<tr><th class="p-3">姓名</th><th class="p-3">椅背號</th><th class="p-3">職稱</th><th class="p-3">報到狀態</th></tr>';
+      } else if (activeTab === "staff") {
+        thead.innerHTML = '<tr><th class="p-3">姓名</th><th class="p-3">椅背號</th><th class="p-3">單位職稱</th><th class="p-3">報到狀態</th></tr>';
+      } else {
+        thead.innerHTML = '<tr><th class="p-3">姓名</th><th class="p-3">廳別 / 桌次 / 序號</th><th class="p-3">單位</th><th class="p-3">素食</th><th class="p-3">報到狀態</th></tr>';
+      }
+
+      var filtered = list.filter(function(item) {
+        return JSON.stringify(item).toLowerCase().indexOf(kw) !== -1;
+      });
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400">無符合資料</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function(item) {
+        var cTime = getCheckinTime(item);
+        var badge = cTime
+          ? '<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">已報到 (' + escapeHtml(cTime) + ')</span>'
+          : '<span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">未報到</span>';
+
+        if (activeTab === "alumni") {
+          return '<tr><td class="p-3 font-bold">' + escapeHtml(item.Title) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["椅背號", "field_1"])) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["職稱", "field_2"])) + '</td><td class="p-3">' + badge + '</td></tr>';
+        } else if (activeTab === "staff") {
+          return '<tr><td class="p-3 font-bold">' + escapeHtml(item.Title) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["椅背號", "field_1"])) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["單位職稱", "field_2"])) + '</td><td class="p-3">' + badge + '</td></tr>';
+        } else {
+          return '<tr><td class="p-3 font-bold">' + escapeHtml(item.Title) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["廳別", "field_1"])) + ' - ' + escapeHtml(getVal(item, ["桌次", "field_2"])) + ' (' + escapeHtml(getVal(item, ["序號", "field_3"])) + ')</td><td class="p-3">' + escapeHtml(getVal(item, ["單位", "field_5"])) + '</td><td class="p-3">' + escapeHtml(getVal(item, ["素食", "field_6"])) + '</td><td class="p-3">' + badge + '</td></tr>';
+        }
+      }).join("");
+    }
+
+    el("loginBtn").addEventListener("click", verifyAdmin);
+    el("adminEmailInput").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") verifyAdmin();
+    });
+    el("logoutBtn").addEventListener("click", logoutAdmin);
+    el("btnModeCeremony").addEventListener("click", function() { changeMode("ceremony"); });
+    el("btnModeBanquet").addEventListener("click", function() { changeMode("banquet"); });
+    el("uploadBtn").addEventListener("click", uploadExcel);
+    el("refreshBtn").addEventListener("click", loadAllLists);
+    el("exportBtn").addEventListener("click", exportExcel);
+    el("atab-alumni").addEventListener("click", function() { switchAdminTab("alumni"); });
+    el("atab-staff").addEventListener("click", function() { switchAdminTab("staff"); });
+    el("atab-banquet").addEventListener("click", function() { switchAdminTab("banquet"); });
+    el("adminFilterInput").addEventListener("input", renderAdminTable);
+
+    window.addEventListener("DOMContentLoaded", async function() {
+      var saved = getSavedEmail();
+      if (saved) {
+        el("loginBox").classList.add("hidden");
+        el("autoLoginLoading").classList.remove("hidden");
+        el("adminEmailInput").value = saved;
+        var ok = await doLoginRequest(saved);
+        if (!ok) {
+          clearSavedEmail();
+          el("autoLoginLoading").classList.add("hidden");
+          el("loginBox").classList.remove("hidden");
+        }
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

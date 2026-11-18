@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>校慶座位查詢與自助報到系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans antialiased">
+
+  <header class="bg-indigo-900 text-white py-6 px-4 shadow-md">
+    <div class="max-w-xl mx-auto text-center">
+      <h1 id="pageTitle" class="text-2xl sm:text-3xl font-extrabold tracking-wide">系統載入中...</h1>
+      <p id="pageSubtitle" class="text-indigo-200 text-base sm:text-lg mt-1.5">請稍候，正在讀取活動模式</p>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto p-4 sm:p-6 mt-2">
+    <div id="initError" class="hidden bg-red-50 border-2 border-red-200 text-red-700 p-4 rounded-2xl mb-4 text-base"></div>
+
+    <div id="mainCard" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+      
+      <div id="ceremonyTabs" class="hidden mb-6">
+        <label class="block text-base font-bold text-slate-700 mb-2.5">1. 請選擇您的身分別</label>
+        <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl">
+          <button type="button" id="tabAlumni"
+            class="py-3.5 text-lg font-extrabold rounded-xl bg-white text-indigo-900 shadow-sm transition">
+            校友貴賓
+          </button>
+          <button type="button" id="tabStaff"
+            class="py-3.5 text-lg font-extrabold rounded-xl text-slate-600 hover:text-slate-900 transition">
+            教職員 / 貴賓
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <label for="nameInput" class="block text-base font-bold text-slate-700 mb-2.5">
+          <span id="stepLabel">2. </span>請輸入您的姓名（可輸入部分關鍵字）
+        </label>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input type="text" id="nameInput" placeholder="例如：林維崙"
+            class="flex-1 border-2 border-slate-300 rounded-xl px-4 py-3.5 text-xl font-medium focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200" />
+          <button type="button" id="searchBtn"
+            class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xl font-extrabold px-8 py-3.5 rounded-xl shadow-sm transition whitespace-nowrap">
+            查詢
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loadingBox" class="hidden text-center py-12">
+      <div class="inline-block w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+      <p class="text-slate-600 text-lg font-medium mt-3">正在查詢名單，請稍候...</p>
+    </div>
+
+    <div id="resultArea" class="mt-5 space-y-4"></div>
+  </main>
+
+  <footer class="max-w-xl mx-auto text-center py-8 text-sm text-slate-400">
+    <a href="admin.html" class="hover:text-slate-600 underline">工作人員後台管理</a>
+  </footer>
+
+  <script>
+  (function() {
+    var CONFIG = {
+      URL_CONFIG: "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/84466ef4714f48c58c9ffaf0fd4aa52d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=XRC0r4mbBaHUWmzvZG8JKDGgzi45HcZHjAbTFN-OcTs",
+      URL_QUERY:  "https://default16ca737daabe4d50ac561684705071.2c.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/04/workflows/da99d5417ed74d2e94e4bc62c3329648/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=1JcCijnr3-AUVefgzLWIcNuLHwN2YxVOtflOxA7p3Zc"
+    };
+
+    var currentMode = "ceremony";
+    var currentCategory = "alumni";
+
+    function el(id) {
+      return document.getElementById(id);
+    }
+
+    function escapeHtml(str) {
+      var s = (str === undefined || str === null) ? "" : String(str);
+      return s.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#39;");
+    }
+
+    function getField(item, keys) {
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (item[k] !== undefined && item[k] !== null && String(item[k]).trim() !== "") {
+          return String(item[k]).trim();
+        }
+      }
+      return "";
+    }
+
+    function getCheckinTime(item) {
+      var candidateKeys = [
+        "報到時間",
+        "field_1", "field_2", "field_3", "field_4", "field_5",
+        "field_6", "field_7", "field_8", "field_9", "field_10"
+      ];
+      for (var i = 0; i < candidateKeys.length; i++) {
+        var val = item[candidateKeys[i]];
+        if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(val.trim())) {
+          return val.trim();
+        }
+      }
+      for (var k in item) {
+        if (!Object.prototype.hasOwnProperty.call(item, k)) continue;
+        if (k === "Created" || k === "Modified" || k.charAt(0) === "@" || k.charAt(0) === "{") continue;
+        var v = item[k];
+        if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(v.trim())) {
+          return v.trim();
+        }
+      }
+      return "";
+    }
+
+    function switchCategory(cat) {
+      currentCategory = cat;
+      var tabAlumni = el("tabAlumni");
+      var tabStaff = el("tabStaff");
+      if (cat === "alumni") {
+        tabAlumni.className = "py-3.5 text-lg font-extrabold rounded-xl bg-white text-indigo-900 shadow-sm transition";
+        tabStaff.className = "py-3.5 text-lg font-extrabold rounded-xl text-slate-600 hover:text-slate-900 transition";
+      } else {
+        tabStaff.className = "py-3.5 text-lg font-extrabold rounded-xl bg-white text-indigo-900 shadow-sm transition";
+        tabAlumni.className = "py-3.5 text-lg font-extrabold rounded-xl text-slate-600 hover:text-slate-900 transition";
+      }
+      el("resultArea").innerHTML = "";
+    }
+
+    async function doCheckIn(itemId, guestName, btn) {
+      btn.disabled = true;
+      btn.textContent = "報到處理中...";
+      btn.classList.add("opacity-70");
+
+      try {
+        var res = await fetch(CONFIG.URL_QUERY, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "checkin",
+            category: currentCategory,
+            itemId: itemId,
+            name: guestName
+          })
+        });
+        if (!res.ok) throw new Error("報到寫入失敗");
+        await searchGuest();
+      } catch (err) {
+        alert("報到失敗，請再試一次：" + err.message);
+        btn.disabled = false;
+        btn.textContent = "點此確認報到";
+        btn.classList.remove("opacity-70");
+      }
+    }
+
+    function renderCard(item) {
+      var card = document.createElement("div");
+      card.className = "bg-white border-2 border-slate-200 rounded-2xl p-6 shadow-sm";
+
+      var checkinTime = getCheckinTime(item);
+      var isCheckedIn = Boolean(checkinTime);
+      var guestName = item.Title || "";
+      var detailHtml = "";
+
+      if (currentCategory === "banquet") {
+        var hall = getField(item, ["廳別", "field_1"]) || "-";
+        var tableNo = getField(item, ["桌次", "field_2"]) || "-";
+        var tableAttr = getField(item, ["桌次屬性", "field_4"]);
+        var unit = getField(item, ["單位", "field_5"]);
+        var veg = getField(item, ["素食", "field_6"]);
+
+        var vegBadge = (veg && veg !== "否" && veg !== "葷")
+          ? '<span class="inline-block bg-emerald-100 text-emerald-800 text-sm font-extrabold px-3 py-1 rounded-full ml-2">素食 (' + escapeHtml(veg) + ')</span>'
+          : "";
+
+        detailHtml =
+          '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">' +
+            '<div>' +
+              '<span class="text-2xl sm:text-3xl font-extrabold text-slate-900">' + escapeHtml(guestName) + '</span>' +
+              vegBadge +
+            '</div>' +
+            '<span class="text-base font-medium text-slate-500">' + escapeHtml(unit) + '</span>' +
+          '</div>' +
+          '<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 my-4 grid grid-cols-2 gap-2 text-center">' +
+            '<div class="border-r-2 border-amber-200">' +
+              '<div class="text-sm font-bold text-amber-800">廳別</div>' +
+              '<div class="text-3xl sm:text-4xl font-black text-amber-950 mt-1.5">' + escapeHtml(hall) + '</div>' +
+            '</div>' +
+            '<div>' +
+              '<div class="text-sm font-bold text-amber-800">桌次</div>' +
+              '<div class="text-3xl sm:text-4xl font-black text-amber-950 mt-1.5">' + escapeHtml(tableNo) + '</div>' +
+            '</div>' +
+          '</div>' +
+          (tableAttr ? '<p class="text-base text-slate-600 mb-4 font-medium">桌次屬性：' + escapeHtml(tableAttr) + '</p>' : "");
+      } else {
+        var seatNo = getField(item, ["椅背號", "field_1"]) || "未編排";
+        var subTitle = currentCategory === "alumni"
+          ? getField(item, ["職稱", "field_2"])
+          : getField(item, ["單位職稱", "field_2"]);
+
+        detailHtml =
+          '<div class="mb-3">' +
+            '<div class="text-2xl sm:text-3xl font-extrabold text-slate-900">' + escapeHtml(guestName) + '</div>' +
+            (subTitle ? '<div class="text-lg text-slate-600 mt-1">' + escapeHtml(subTitle) + '</div>' : "") +
+          '</div>' +
+          '<div class="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-5 my-4 text-center">' +
+            '<div class="text-base text-indigo-800 font-bold">您的典禮椅背號</div>' +
+            '<div class="text-4xl sm:text-5xl font-black text-indigo-950 mt-2 tracking-wide">' + escapeHtml(seatNo) + '</div>' +
+          '</div>';
+      }
+
+      card.innerHTML = detailHtml;
+
+      if (isCheckedIn) {
+        var doneDiv = document.createElement("div");
+        doneDiv.className = "w-full bg-emerald-50 border-2 border-emerald-300 text-emerald-900 text-center py-4 rounded-xl text-lg font-extrabold";
+        doneDiv.textContent = "✓ 已完成報到（" + checkinTime + "）";
+        card.appendChild(doneDiv);
+      } else {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold py-4 rounded-xl shadow-md transition text-xl";
+        btn.textContent = "點此確認報到";
+        btn.addEventListener("click", function() {
+          doCheckIn(item.ID, guestName, btn);
+        });
+        card.appendChild(btn);
+      }
+
+      return card;
+    }
+
+    async function searchGuest() {
+      var name = el("nameInput").value.trim();
+      if (!name) {
+        alert("請先輸入姓名！");
+        return;
+      }
+
+      var resultArea = el("resultArea");
+      var loadingBox = el("loadingBox");
+      resultArea.innerHTML = "";
+      loadingBox.classList.remove("hidden");
+
+      try {
+        var res = await fetch(CONFIG.URL_QUERY, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "search",
+            category: currentCategory,
+            name: name
+          })
+        });
+        if (!res.ok) throw new Error("查詢請求失敗");
+        var list = await res.json();
+        loadingBox.classList.add("hidden");
+
+        if (!Array.isArray(list) || list.length === 0) {
+          resultArea.innerHTML =
+            '<div class="bg-white border-2 border-slate-200 rounded-2xl p-6 text-center text-slate-600">' +
+              '<p class="text-xl font-bold text-slate-800 mb-2">查無符合「' + escapeHtml(name) + '」的資料</p>' +
+              '<p class="text-base">請確認輸入的姓名是否正確，或嘗試切換上方的身分別頁籤。</p>' +
+            '</div>';
+          return;
+        }
+
+        for (var i = 0; i < list.length; i++) {
+          resultArea.appendChild(renderCard(list[i]));
+        }
+      } catch (err) {
+        loadingBox.classList.add("hidden");
+        resultArea.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-2xl text-base">查詢發生錯誤：' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    el("tabAlumni").addEventListener("click", function() { switchCategory("alumni"); });
+    el("tabStaff").addEventListener("click", function() { switchCategory("staff"); });
+    el("searchBtn").addEventListener("click", searchGuest);
+    el("nameInput").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") searchGuest();
+    });
+
+    async function initPage() {
+      try {
+        var res = await fetch(CONFIG.URL_CONFIG, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (!res.ok) throw new Error("無法讀取系統設定");
+        var data = await res.json();
+        currentMode = (data.mode || "ceremony").trim().toLowerCase();
+
+        if (currentMode === "banquet") {
+          currentCategory = "banquet";
+          el("pageTitle").textContent = "校慶午宴桌次查詢與報到";
+          el("pageSubtitle").textContent = "請輸入姓名查詢您的宴會廳別與桌次";
+          el("ceremonyTabs").classList.add("hidden");
+          el("stepLabel").textContent = "";
+        } else {
+          currentCategory = "alumni";
+          el("pageTitle").textContent = "校慶典禮座位查詢與報到";
+          el("pageSubtitle").textContent = "請選擇身分別並輸入姓名查詢座位";
+          el("ceremonyTabs").classList.remove("hidden");
+          el("stepLabel").textContent = "2. ";
+        }
+        el("mainCard").classList.remove("hidden");
+      } catch (err) {
+        var errBox = el("initError");
+        errBox.textContent = "系統初始化失敗，請確認網路連線或 API_GetConfig 網址設定。(" + err.message + ")";
+        errBox.classList.remove("hidden");
+      }
+    }
+
+    initPage();
+  })();
+  </script>
+</body>
+</html>
