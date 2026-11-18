@@ -8,15 +8,13 @@
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 font-sans antialiased">
 
-  <!-- 頂部精巧卡片式組合 Banner（與下方查詢框等寬對齊，不佔過多垂直空間） -->
+  <!-- 頂部精巧卡片式組合 Banner（從雲端自動讀取主視覺並與下方查詢框對齊） -->
   <header class="max-w-xl mx-auto px-4 sm:px-6 pt-3 sm:pt-5">
     <div class="rounded-2xl overflow-hidden shadow-md border border-slate-200 bg-white">
-      <!-- 1. 主視覺圖片區（精巧高度，原色完整呈現） -->
       <div id="visualWrapper" class="hidden w-full bg-[#5c191b] flex justify-center items-center">
         <img id="visualImg" src="" alt="活動主視覺" class="w-full max-h-36 sm:max-h-44 object-contain block" />
       </div>
 
-      <!-- 2. 場次識別橫條（緊湊高度，保留典禮深藍 / 午宴深琥珀色區別） -->
       <div id="modeBanner" class="bg-indigo-900 text-white py-3.5 px-4 transition-colors duration-300">
         <div class="text-center">
           <h1 id="pageTitle" class="text-xl sm:text-2xl font-extrabold tracking-wide">系統載入中...</h1>
@@ -122,18 +120,6 @@
         }
       }
       return "";
-    }
-
-    function applyVisual() {
-      try {
-        var visual = localStorage.getItem("event_visual_main");
-        if (visual) {
-          el("visualImg").src = visual;
-          el("visualWrapper").classList.remove("hidden");
-        } else {
-          el("visualWrapper").classList.add("hidden");
-        }
-      } catch (e) {}
     }
 
     function switchCategory(cat) {
@@ -305,7 +291,6 @@
     });
 
     async function initPage() {
-      applyVisual();
       try {
         var res = await fetch(CONFIG.URL_CONFIG, {
           method: "POST",
@@ -315,6 +300,14 @@
         if (!res.ok) throw new Error("無法讀取系統設定");
         var data = await res.json();
         currentMode = (data.mode || "ceremony").trim().toLowerCase();
+
+        // 若雲端有設定活動主視覺，則同步顯示
+        if (data.bannerImage && data.bannerImage.trim() !== "") {
+          el("visualImg").src = data.bannerImage.trim();
+          el("visualWrapper").classList.remove("hidden");
+        } else {
+          el("visualWrapper").classList.add("hidden");
+        }
 
         if (currentMode === "banquet") {
           currentCategory = "banquet";

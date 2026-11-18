@@ -48,32 +48,32 @@
 
     <div id="dashboard" class="hidden space-y-6">
 
-      <!-- 區塊一：上傳活動主視覺 -->
+      <!-- 區塊一：雲端同步活動主視覺管理 -->
       <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-        <h2 class="text-base font-bold text-slate-900">1. 活動主視覺圖片管理</h2>
-        <p class="text-xs text-slate-500 mt-1 mb-4">上傳活動橫幅主視覺，前台 Banner 將以此圖為背景（建議比例為 16:9 或寬螢幕比例）。</p>
+        <h2 class="text-base font-bold text-slate-900">1. 活動主視覺圖片管理（全裝置雲端同步）</h2>
+        <p class="text-xs text-slate-500 mt-1 mb-4">上傳後將自動壓縮並同步儲存至雲端，所有電腦與手機打開前台皆會即時顯示。</p>
         
         <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div class="flex flex-col gap-2">
+          <div class="flex flex-col gap-1">
             <input type="file" id="visualFileInput" accept="image/*"
               class="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-            <p class="text-[10px] text-slate-400">支援 JPG、PNG，大小建議小於 2MB</p>
+            <p class="text-[11px] text-slate-400">支援 JPG、PNG，系統將自動最佳化圖片尺寸</p>
           </div>
           
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
             <button type="button" id="saveVisualBtn"
               class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">
-              儲存活動主視覺
+              上傳並同步至雲端
             </button>
             <button type="button" id="clearVisualBtn"
               class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-2.5 rounded-xl transition">
-              重設預設
+              清除主視覺
             </button>
           </div>
 
-          <!-- 縮圖預覽區 -->
-          <div id="previewContainer" class="hidden border border-slate-200 rounded-lg p-1 bg-slate-50">
-            <img id="visualPreview" src="" class="h-12 w-auto object-cover rounded-md shadow-sm" alt="主視覺預覽" />
+          <!-- 雲端目前主視覺預覽 -->
+          <div id="previewContainer" class="hidden border border-slate-200 rounded-lg p-1.5 bg-[#5c191b]">
+            <img id="visualPreview" src="" class="h-14 w-auto object-contain rounded" alt="目前雲端主視覺" />
           </div>
         </div>
       </section>
@@ -192,7 +192,6 @@
     };
 
     var STORAGE_KEY = "school_event_admin_email";
-    var VISUAL_KEY = "event_visual_main";
     var adminEmail = "";
     var allData = { alumni: [], staff: [], banquet: [] };
     var activeTab = "alumni";
@@ -211,54 +210,95 @@
       try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     }
 
-    // 預覽與載入已存主視覺
-    function initVisualManager() {
-      try {
-        var savedVisual = localStorage.getItem(VISUAL_KEY);
-        if (savedVisual) {
-          el("visualPreview").src = savedVisual;
-          el("previewContainer").classList.remove("hidden");
-        }
-      } catch (e) { console.log(e); }
+    // 前端自動壓縮圖片，確保上傳至 SharePoint 快速且不超載
+    function compressImageToBase64(file, maxWidth, quality) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          var img = new Image();
+          img.onload = function() {
+            var width = img.width;
+            var height = img.height;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            var canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          };
+          img.onerror = function() { reject(new Error("圖片解析失敗")); };
+          img.src = event.target.result;
+        };
+        reader.onerror = function() { reject(new Error("檔案讀取失敗")); };
+        reader.readAsDataURL(file);
+      });
     }
 
-    // 上傳主視覺
-    function handleVisualUpload() {
+    // 上傳主視覺至雲端 SharePoint
+    async function handleVisualUpload() {
       var file = el("visualFileInput").files[0];
       if (!file) {
-        alert("請先選擇圖片！");
-        return;
-      }
-      if (file.size > 2.5 * 1024 * 1024) {
-        alert("圖片尺寸過大（建議不超過 2MB），請壓縮後再上傳！");
+        alert("請先選擇要上傳的圖片！");
         return;
       }
 
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          var base64Img = e.target.result;
-          localStorage.setItem(VISUAL_KEY, base64Img);
-          el("visualPreview").src = base64Img;
-          el("previewContainer").classList.remove("hidden");
-          alert("✓ 活動主視覺儲存成功！前台 Banner 背景已同步套用。");
-        } catch (err) {
-          alert("儲存失敗，可能是瀏覽器儲存空間已滿，請更換較小的圖片檔案。");
-        }
-      };
-      reader.readAsDataURL(file);
+      var btn = el("saveVisualBtn");
+      btn.disabled = true;
+      btn.textContent = "雲端同步中...";
+
+      try {
+        var compressedBase64 = await compressImageToBase64(file, 1000, 0.8);
+        var res = await fetch(CONFIG.URL_ADMIN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: adminEmail,
+            command: "setBanner",
+            bannerImage: compressedBase64
+          })
+        });
+        if (!res.ok) throw new Error("雲端寫入失敗，HTTP 狀態碼：" + res.status);
+
+        el("visualPreview").src = compressedBase64;
+        el("previewContainer").classList.remove("hidden");
+        alert("✓ 活動主視覺已成功同步至雲端！現在所有電腦與手機打開前台都會顯示此圖片。");
+      } catch (err) {
+        alert("上傳失敗：" + err.message + "\n請確認已在 Power Automate API_Admin 加入 setBanner 分支與 SharePoint BannerImage 欄位。");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "上傳並同步至雲端";
+      }
     }
 
-    // 重設主視覺
-    function clearVisual() {
-      if (!confirm("確定要還原預設的主視覺圖片嗎？")) return;
+    // 清除雲端主視覺
+    async function clearVisual() {
+      if (!confirm("確定要清除雲端活動主視覺嗎？（清除後所有裝置前台將不顯示主視覺圖片）")) return;
+      var btn = el("clearVisualBtn");
+      btn.disabled = true;
       try {
-        localStorage.removeItem(VISUAL_KEY);
+        var res = await fetch(CONFIG.URL_ADMIN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: adminEmail,
+            command: "setBanner",
+            bannerImage: ""
+          })
+        });
+        if (!res.ok) throw new Error("清除失敗");
         el("visualFileInput").value = "";
         el("visualPreview").src = "";
         el("previewContainer").classList.add("hidden");
-        alert("已還原為預設圖片。");
-      } catch (e) {}
+        alert("已清除雲端主視覺。");
+      } catch (err) {
+        alert("清除失敗：" + err.message);
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function escapeHtml(str) {
@@ -329,7 +369,7 @@
         el("dashboard").classList.remove("hidden");
 
         updateStatsAndTable();
-        await fetchCurrentMode();
+        await fetchCurrentConfig();
         return true;
       } catch (err) {
         errEl.textContent = err.message;
@@ -372,7 +412,8 @@
       el("loginBox").classList.remove("hidden");
     }
 
-    async function fetchCurrentMode() {
+    // 從雲端同步讀取目前系統模式與活動主視覺圖片
+    async function fetchCurrentConfig() {
       try {
         var res = await fetch(CONFIG.URL_CONFIG, {
           method: "POST",
@@ -383,6 +424,13 @@
         var mode = (data.mode || "ceremony").trim().toLowerCase();
         el("currentModeBadge").textContent =
           mode === "banquet" ? "校慶午宴 (banquet)" : "校慶典禮 (ceremony)";
+
+        if (data.bannerImage && data.bannerImage.trim() !== "") {
+          el("visualPreview").src = data.bannerImage.trim();
+          el("previewContainer").classList.remove("hidden");
+        } else {
+          el("previewContainer").classList.add("hidden");
+        }
       } catch (e) {
         el("currentModeBadge").textContent = "讀取失敗";
       }
@@ -403,7 +451,7 @@
           })
         });
         if (!res.ok) throw new Error("切換失敗");
-        await fetchCurrentMode();
+        await fetchCurrentConfig();
         alert("已成功切換為「" + label + "」模式！");
       } catch (err) {
         alert("切換模式發生錯誤：" + err.message);
@@ -614,13 +662,10 @@
     el("atab-staff").addEventListener("click", function() { switchAdminTab("staff"); });
     el("atab-banquet").addEventListener("click", function() { switchAdminTab("banquet"); });
     el("adminFilterInput").addEventListener("input", renderAdminTable);
-
-    // 繫結主視覺管理事件
     el("saveVisualBtn").addEventListener("click", handleVisualUpload);
     el("clearVisualBtn").addEventListener("click", clearVisual);
 
     window.addEventListener("DOMContentLoaded", async function() {
-      initVisualManager();
       var saved = getSavedEmail();
       if (saved) {
         el("loginBox").classList.add("hidden");
