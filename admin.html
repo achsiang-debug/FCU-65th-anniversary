@@ -36,7 +36,7 @@
 
     <div id="loginBox" class="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-8">
       <h2 class="text-lg font-bold text-slate-900 mb-1">工作人員身分驗證</h2>
-      <p class="text-xs text-slate-500 mb-4">請輸入授權的學校 O365 電子郵件信箱以進入管理後台（登入後將自動保持登入狀態直到您點擊登出）。</p>
+      <p class="text-xs text-slate-500 mb-4">請輸入授權的學校 O365 電子郵件信箱以進入管理後台。</p>
       <input type="email" id="adminEmailInput" placeholder="name@school.edu.tw"
         class="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
       <button type="button" id="loginBtn"
@@ -48,10 +48,41 @@
 
     <div id="dashboard" class="hidden space-y-6">
 
+      <!-- 區塊一：上傳活動主視覺 -->
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h2 class="text-base font-bold text-slate-900">1. 活動主視覺圖片管理</h2>
+        <p class="text-xs text-slate-500 mt-1 mb-4">上傳活動橫幅主視覺，前台 Banner 將以此圖為背景（建議比例為 16:9 或寬螢幕比例）。</p>
+        
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div class="flex flex-col gap-2">
+            <input type="file" id="visualFileInput" accept="image/*"
+              class="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            <p class="text-[10px] text-slate-400">支援 JPG、PNG，大小建議小於 2MB</p>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <button type="button" id="saveVisualBtn"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">
+              儲存活動主視覺
+            </button>
+            <button type="button" id="clearVisualBtn"
+              class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-2.5 rounded-xl transition">
+              重設預設
+            </button>
+          </div>
+
+          <!-- 縮圖預覽區 -->
+          <div id="previewContainer" class="hidden border border-slate-200 rounded-lg p-1 bg-slate-50">
+            <img id="visualPreview" src="" class="h-12 w-auto object-cover rounded-md shadow-sm" alt="主視覺預覽" />
+          </div>
+        </div>
+      </section>
+
+      <!-- 區塊二：前台活動模式切換 -->
       <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 class="text-base font-bold text-slate-900">1. 前台 QR Code 活動模式切換</h2>
+            <h2 class="text-base font-bold text-slate-900">2. 前台 QR Code 活動模式切換</h2>
             <p class="text-xs text-slate-500 mt-1">
               目前前台顯示模式：<span id="currentModeBadge" class="font-bold text-indigo-600">讀取中...</span>
             </p>
@@ -69,8 +100,9 @@
         </div>
       </section>
 
+      <!-- 區塊三：Excel 名單一鍵匯入 -->
       <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-        <h2 class="text-base font-bold text-slate-900">2. Excel 名單批次匯入</h2>
+        <h2 class="text-base font-bold text-slate-900">3. Excel 名單批次匯入</h2>
         <p class="text-xs text-slate-500 mt-1 mb-4">
           請選擇包含「<strong>校慶典禮座位號_校友</strong>」、「<strong>校慶典禮座位號_教職員貴賓</strong>」、「<strong>校慶午宴桌次號</strong>」工作表的 Excel 檔案（.xlsx）。
         </p>
@@ -92,10 +124,11 @@
         <div id="importStatus" class="hidden mt-3 text-xs p-3 rounded-xl"></div>
       </section>
 
+      <!-- 區塊四：即時報到統計與名單檢視 -->
       <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h2 class="text-base font-bold text-slate-900">3. 即時報到狀況與名單匯出</h2>
+            <h2 class="text-base font-bold text-slate-900">4. 即時報到狀況與名單匯出</h2>
             <p class="text-xs text-slate-500 mt-0.5">可隨時重新整理查看現場報到進度，或匯出含報到時間的 Excel 備份。</p>
           </div>
           <div class="flex gap-2">
@@ -159,6 +192,7 @@
     };
 
     var STORAGE_KEY = "school_event_admin_email";
+    var VISUAL_KEY = "event_visual_main";
     var adminEmail = "";
     var allData = { alumni: [], staff: [], banquet: [] };
     var activeTab = "alumni";
@@ -177,13 +211,59 @@
       try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     }
 
+    // 預覽與載入已存主視覺
+    function initVisualManager() {
+      try {
+        var savedVisual = localStorage.getItem(VISUAL_KEY);
+        if (savedVisual) {
+          el("visualPreview").src = savedVisual;
+          el("previewContainer").classList.remove("hidden");
+        }
+      } catch (e) { console.log(e); }
+    }
+
+    // 上傳主視覺
+    function handleVisualUpload() {
+      var file = el("visualFileInput").files[0];
+      if (!file) {
+        alert("請先選擇圖片！");
+        return;
+      }
+      if (file.size > 2.5 * 1024 * 1024) {
+        alert("圖片尺寸過大（建議不超過 2MB），請壓縮後再上傳！");
+        return;
+      }
+
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          var base64Img = e.target.result;
+          localStorage.setItem(VISUAL_KEY, base64Img);
+          el("visualPreview").src = base64Img;
+          el("previewContainer").classList.remove("hidden");
+          alert("✓ 活動主視覺儲存成功！前台 Banner 背景已同步套用。");
+        } catch (err) {
+          alert("儲存失敗，可能是瀏覽器儲存空間已滿，請更換較小的圖片檔案。");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // 重設主視覺
+    function clearVisual() {
+      if (!confirm("確定要還原預設的主視覺圖片嗎？")) return;
+      try {
+        localStorage.removeItem(VISUAL_KEY);
+        el("visualFileInput").value = "";
+        el("visualPreview").src = "";
+        el("previewContainer").classList.add("hidden");
+        alert("已還原為預設圖片。");
+      } catch (e) {}
+    }
+
     function escapeHtml(str) {
       var s = (str === undefined || str === null) ? "" : String(str);
-      return s.replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;")
-              .replace(/"/g, "&quot;")
-              .replace(/'/g, "&#39;");
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
     function getVal(item, keys) {
@@ -197,21 +277,18 @@
     }
 
     function getCheckinTime(item) {
-      var candidateKeys = [
-        "報到時間",
-        "field_1", "field_2", "field_3", "field_4", "field_5",
-        "field_6", "field_7", "field_8", "field_9", "field_10"
-      ];
+      var candidateKeys = ["報到時間", "field_1", "field_2", "field_3", "field_4", "field_5", "field_6", "field_7", "field_8", "field_9", "field_10"];
       for (var i = 0; i < candidateKeys.length; i++) {
         var val = item[candidateKeys[i]];
         if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(val.trim())) {
           return val.trim();
         }
       }
-      for (var k in item) {
-        if (!Object.prototype.hasOwnProperty.call(item, k)) continue;
-        if (k === "Created" || k === "Modified" || k.charAt(0) === "@" || k.charAt(0) === "{") continue;
-        var v = item[k];
+      var entries = Object.entries(item);
+      for (var j = 0; j < entries.length; j++) {
+        var k = entries[j][0];
+        var v = entries[j][1];
+        if (k === "Created" || k === "Modified" || k.indexOf("@") === 0 || k.indexOf("{") === 0) continue;
         if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(v.trim())) {
           return v.trim();
         }
@@ -283,7 +360,7 @@
     }
 
     function logoutAdmin() {
-      if (!confirm("確定要登出管理後台嗎？登出後下次進入需重新輸入信箱驗證。")) return;
+      if (!confirm("確定要登出管理後台嗎？")) return;
       clearSavedEmail();
       adminEmail = "";
       allData = { alumni: [], staff: [], banquet: [] };
@@ -538,7 +615,12 @@
     el("atab-banquet").addEventListener("click", function() { switchAdminTab("banquet"); });
     el("adminFilterInput").addEventListener("input", renderAdminTable);
 
+    // 繫結主視覺管理事件
+    el("saveVisualBtn").addEventListener("click", handleVisualUpload);
+    el("clearVisualBtn").addEventListener("click", clearVisual);
+
     window.addEventListener("DOMContentLoaded", async function() {
+      initVisualManager();
       var saved = getSavedEmail();
       if (saved) {
         el("loginBox").classList.add("hidden");
